@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b1310">
+<link rel="manifest" href="./manifest.json">
+<title>Rastreador de Veículo</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --bg:#0b1310; --bg2:#111c17; --card:#132019;
+    --linha:rgba(214,232,220,0.10);
+    --texto:#dfeee6; --texto-fraco:rgba(223,238,230,0.55);
+    --verde:#39c98f; --ambar:#e0a640; --vermelho:#e0664a;
+    --mono:'IBM Plex Mono', monospace;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--texto); font-family:'Inter',sans-serif; padding-bottom:40px;}
+  h1,h2{font-family:'Fraunces',serif; margin:0;}
+  header{
+    padding:18px 20px; display:flex; align-items:center; justify-content:space-between;
+    border-bottom:1px solid var(--linha); position:sticky; top:0; background:rgba(11,19,16,0.92);
+    backdrop-filter:blur(6px); z-index:20;
+  }
+  header .title{display:flex; align-items:center; gap:10px;}
+  header h1{font-size:1.15rem;}
+  .badge{
+    font-family:var(--mono); font-size:0.7rem; padding:5px 10px; border-radius:20px;
+    border:1px solid var(--linha); display:flex; align-items:center; gap:6px;
+  }
+  .dot{width:7px; height:7px; border-radius:50%; background:var(--texto-fraco);}
+  .badge.on .dot{background:var(--verde); box-shadow:0 0 0 3px rgba(57,201,143,0.2);}
+  .badge.on{color:var(--verde); border-color:rgba(57,201,143,0.4);}
+  .badge.sync .dot{background:var(--ambar);}
+  .badge.sync{color:var(--ambar); border-color:rgba(224,166,64,0.4);}
+
+  .wrap{max-width:640px; margin:0 auto; padding:20px;}
+  .card{
+    background:var(--card); border:1px solid var(--linha); border-radius:10px;
+    padding:22px; margin-bottom:18px;
+  }
+  label{display:block; font-family:var(--mono); font-size:0.72rem; text-transform:uppercase;
+    letter-spacing:0.06em; color:var(--texto-fraco); margin-bottom:6px;}
+  input{
+    width:100%; padding:12px 14px; border-radius:6px; border:1px solid var(--linha);
+    background:var(--bg2); color:var(--texto); font-size:0.95rem; margin-bottom:14px;
+  }
+  input:focus{outline:none; border-color:var(--verde);}
+  button{
+    font-family:'Inter',sans-serif; font-weight:600; font-size:0.92rem; padding:13px 18px;
+    border-radius:6px; border:none; cursor:pointer;
+  }
+  .btn-primary{background:var(--verde); color:#06140d;}
+  .btn-stop{background:var(--vermelho); color:#210704;}
+  .btn-ghost{background:transparent; border:1px solid var(--linha); color:var(--texto);}
+  .btn-block{width:100%;}
+
+  .veiculo-resumo{display:flex; justify-content:space-between; align-items:center;}
+  .veiculo-resumo .info p{margin:2px 0; font-size:0.9rem; color:var(--texto-fraco);}
+  .veiculo-resumo .info strong{font-family:'Fraunces',serif; font-size:1.15rem; color:var(--texto);}
+  .plate{
+    font-family:var(--mono); background:var(--ambar); color:#221a07; padding:6px 12px;
+    border-radius:5px; font-weight:600; letter-spacing:0.04em;
+  }
+
+  #map{height:320px; border-radius:10px; overflow:hidden; border:1px solid var(--linha); margin-bottom:14px;}
+
+  .stats{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px;}
+  .stat{background:var(--bg2); border:1px solid var(--linha); border-radius:8px; padding:14px 12px; text-align:center;}
+  .stat .val{font-family:var(--mono); font-size:1.25rem; color:var(--verde);}
+  .stat .lbl{font-size:0.68rem; color:var(--texto-fraco); text-transform:uppercase; letter-spacing:0.05em; margin-top:4px;}
+
+  .hist-item{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:14px 0; border-bottom:1px solid var(--linha); cursor:pointer;
+  }
+  .hist-item:last-child{border-bottom:none;}
+  .hist-item:hover{background:rgba(57,201,143,0.04);}
+  .hist-item .data{font-family:var(--mono); font-size:0.8rem; color:var(--texto-fraco);}
+  .hist-item .metrics{display:flex; gap:16px; font-family:var(--mono); font-size:0.82rem;}
+  .hist-item .metrics span b{color:var(--verde); font-weight:500;}
+
+  .empty{color:var(--texto-fraco); font-size:0.88rem; text-align:center; padding:20px 0;}
+  .section-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px;}
+  .section-head h2{font-size:1.05rem;}
+  .section-head a{font-family:var(--mono); font-size:0.75rem; color:var(--verde); text-decoration:none; cursor:pointer;}
+
+  details{border:1px solid var(--linha); border-radius:10px; padding:16px 18px; background:var(--card);}
+  summary{cursor:pointer; font-weight:600; font-size:0.9rem;}
+  details p{font-size:0.85rem; color:var(--texto-fraco); margin:10px 0 0;}
+  .hidden{display:none;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title">
+    <h1>Rastreador</h1>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <div class="badge sync" id="syncBadge"><span class="dot"></span><span id="syncTxt">Conectando…</span></div>
+    <div class="badge" id="statusBadge"><span class="dot"></span><span id="statusTxt">Parado</span></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- CADASTRO -->
+  <div class="card" id="cadastroCard">
+    <label for="ownerName">Nome do dono</label>
+    <input id="ownerName" placeholder="Ex: João da Silva">
+    <label for="vehicleModel">Veículo</label>
+    <input id="vehicleModel" placeholder="Ex: Honda CG 160">
+    <label for="plate">Placa</label>
+    <input id="plate" placeholder="Ex: ABC1D23" style="text-transform:uppercase">
+    <button class="btn-primary btn-block" id="saveVehicle">Salvar dados</button>
+  </div>
+
+  <!-- RESUMO DO VEÍCULO (após cadastro) -->
+  <div class="card hidden" id="resumoCard">
+    <div class="veiculo-resumo">
+      <div class="info">
+        <p>Dono</p>
+        <strong id="resOwner"></strong>
+        <p style="margin-top:8px" id="resVehicle"></p>
+      </div>
+      <div class="plate" id="resPlate"></div>
+    </div>
+    <button class="btn-ghost btn-block" id="editVehicle" style="margin-top:16px;">Editar dados</button>
+  </div>
+
+  <!-- PAINEL DE VIAGEM -->
+  <div class="card hidden" id="painelCard">
+    <div id="map"></div>
+    <div class="stats">
+      <div class="stat"><div class="val" id="statKm">0,00</div><div class="lbl">Km percorridos</div></div>
+      <div class="stat"><div class="val" id="statMov">00:00</div><div class="lbl">Em movimento</div></div>
+      <div class="stat"><div class="val" id="statParado">00:00</div><div class="lbl">Tempo parado</div></div>
+    </div>
+    <button class="btn-primary btn-block" id="startBtn">Iniciar viagem</button>
+    <button class="btn-stop btn-block hidden" id="stopBtn">Parar viagem</button>
+    <p id="geoErro" class="empty hidden" style="color:var(--vermelho);"></p>
+    <p class="empty" style="font-size:0.78rem;">Mantenha esta aba aberta e a tela ligada durante o uso do veículo para o rastreamento funcionar corretamente.</p>
+  </div>
+
+  <!-- HISTÓRICO -->
+  <div class="card hidden" id="historicoCard">
+    <div class="section-head">
+      <h2>Histórico de viagens</h2>
+      <a id="verAtualLink" class="hidden">Ver localização atual</a>
+    </div>
+    <div id="historicoLista"><p class="empty">Nenhuma viagem registrada ainda.</p></div>
+  </div>
+
+  <details>
+    <summary>Como instalar este app no celular</summary>
+    <p><b>Android (Chrome):</b> toque no menu ⋮ e escolha "Adicionar à tela inicial" (ou toque no botão de instalar que aparece na barra de endereço).</p>
+    <p><b>iPhone (Safari):</b> toque no ícone de compartilhar e escolha "Adicionar à Tela de Início".</p>
+    <p>Depois de instalado, abra sempre pelo ícone criado — isso faz o app rodar em tela cheia, como um aplicativo real.</p>
+    <p><b>Importante:</b> navegadores (principalmente no iPhone) pausam a localização quando a tela é bloqueada ou o app minimizado. Para rastreamento realmente contínuo com a tela apagada, apenas um app nativo resolve — isto aqui é o melhor possível usando só tecnologia web.</p>
+  </details>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ================== FIREBASE ==================
+// Substitua pelos dados do SEU projeto (Console Firebase > Configurações do projeto > Seus apps)
+const firebaseConfig = {
+  apiKey: "AIzaSyBu1-wmA3ghtSrSy0g7c1REuXSyeYdVZl8",
+  authDomain: "rastreador-veicular-7d1af.firebaseapp.com",
+  databaseURL: "https://rastreador-veicular-7d1af-default-rtdb.firebaseio.com",
+  projectId: "rastreador-veicular-7d1af",
+  storageBucket: "rastreador-veicular-7d1af.firebasestorage.app",
+  messagingSenderId: "950183524518",
+  appId: "1:950183524518:web:831adeca4969a246fcdc67"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+db.ref('.info/connected').on('value', (snap) => {
+  const ok = snap.val() === true;
+  $('syncBadge').classList.toggle('on', ok);
+  $('syncTxt').textContent = ok ? 'Sincronizado' : 'Sem conexão';
+  if(ok) syncOfflinePoints();
+});
+
+// ---------- estado ----------
+let map, marker, polyline, currentTripPoints = [];
+let watchId = null;
+let tripStart = null;
+let totalKm = 0, movingSec = 0, stoppedSec = 0;
+let lastFix = null;
+const MOVE_THRESHOLD_M = 12;
+let plateKey = null; // placa sanitizada, usada como chave no banco
+let wakeLock = null;
+let pingInterval = null;
+
+// ---------- IndexedDB para offline ----------
+const DB_NAME = 'RastreadorOffline';
+const DB_VERSION = 1;
+let dbOffline = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('points')) {
+        db.createObjectStore('points', { keyPath: 'id', autoIncrement: true });
+      }
+      if (!db.objectStoreNames.contains('trips')) {
+        db.createObjectStore('trips', { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = () => { dbOffline = request.result; resolve(dbOffline); };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function savePointOffline(lat, lng, timestamp, km, movingSec, stoppedSec) {
+  try {
+    const db = await openDB();
+    const tx = db.transaction('points', 'readwrite');
+    const store = tx.objectStore('points');
+    store.add({ lat, lng, timestamp, km, movingSec, stoppedSec, plateKey });
+  } catch (e) { console.warn('Falha ao salvar ponto offline:', e); }
+}
+
+async function saveTripOffline(trip) {
+  try {
+    const db = await openDB();
+    const tx = db.transaction('trips', 'readwrite');
+    const store = tx.objectStore('trips');
+    store.add(trip);
+  } catch (e) { console.warn('Falha ao salvar viagem offline:', e); }
+}
+
+async function syncOfflinePoints() {
+  try {
+    const db = await openDB();
+    // Sincronizar pontos
+    const txPoints = db.transaction('points', 'readonly');
+    const storePoints = txPoints.objectStore('points');
+    const points = await new Promise((resolve) => {
+      const req = storePoints.getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve([]);
+    });
+    for (const p of points) {
+      if (p.plateKey === plateKey) {
+        await db.ref('vehicles/' + plateKey + '/live').update({
+          lat: p.lat, lng: p.lng, timestamp: p.timestamp,
+          km: p.km, movingSec: p.movingSec, stoppedSec: p.stoppedSec
+        });
+      }
+    }
+    // Limpar pontos sincronizados
+    const txDelete = db.transaction('points', 'readwrite');
+    const storeDelete = txDelete.objectStore('points');
+    storeDelete.clear();
+
+    // Sincronizar viagens
+    const txTrips = db.transaction('trips', 'readonly');
+    const storeTrips = txTrips.objectStore('trips');
+    const trips = await new Promise((resolve) => {
+      const req = storeTrips.getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve([]);
+    });
+    for (const trip of trips) {
+      if (trip.plateKey === plateKey) {
+        await db.ref('vehicles/' + plateKey + '/trips/' + trip.id).set(trip);
+      }
+    }
+    const txTripsDelete = db.transaction('trips', 'readwrite');
+    const storeTripsDelete = txTripsDelete.objectStore('trips');
+    storeTripsDelete.clear();
+  } catch (e) { console.warn('Falha na sincronização offline:', e); }
+}
+
+// ---------- utilidades ----------
+function haversine(lat1, lon1, lat2, lon2){
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function fmtHM(totalSeconds){
+  const h = Math.floor(totalSeconds/3600);
+  const m = Math.floor((totalSeconds%3600)/60);
+  return (h>0 ? h+"h " : "") + String(m).padStart(2,'0')+"min";
+}
+function fmtClock(totalSeconds){
+  const h = Math.floor(totalSeconds/3600);
+  const m = Math.floor((totalSeconds%3600)/60);
+  return String(h).padStart(2,'0')+":"+String(m).padStart(2,'0');
+}
+function uid(){ return 't_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+function sanitizeKey(str){ return str.replace(/[.#$\[\]\/\s]/g, '_').toUpperCase(); }
+
+// ---------- storage local (só lembra qual veículo este aparelho usa) ----------
+async function localGet(key){
+  try{ const r = await window.storage.get(key, false); return r ? JSON.parse(r.value) : null; }
+  catch(e){ return null; }
+}
+async function localSet(key, value){
+  try{ await window.storage.set(key, JSON.stringify(value), false); }
+  catch(e){ console.error('storage local falhou', e); }
+}
+
+// ---------- cadastro do veículo (gravado no Firebase, plate = chave) ----------
+async function loadVehicle(){
+  const v = await localGet('this-device-vehicle');
+  if(v){
+    plateKey = sanitizeKey(v.plate);
+    showResumo(v);
+  } else {
+    $('cadastroCard').classList.remove('hidden');
+  }
+}
+function showResumo(v){
+  $('resOwner').textContent = v.ownerName;
+  $('resVehicle').textContent = v.vehicleModel;
+  $('resPlate').textContent = v.plate;
+  $('cadastroCard').classList.add('hidden');
+  $('resumoCard').classList.remove('hidden');
+  $('painelCard').classList.remove('hidden');
+  $('historicoCard').classList.remove('hidden');
+  initMap();
+  listenHistorico();
+  listenLiveFromOtherDevices();
+}
+$('saveVehicle').addEventListener('click', async () => {
+  const ownerName = $('ownerName').value.trim();
+  const vehicleModel = $('vehicleModel').value.trim();
+  const plate = $('plate').value.trim().toUpperCase();
+  if(!ownerName || !vehicleModel || !plate){ alert('Preencha todos os campos.'); return; }
+  const v = {ownerName, vehicleModel, plate};
+  plateKey = sanitizeKey(plate);
+  await localSet('this-device-vehicle', v);
+  await db.ref('vehicles/' + plateKey + '/info').set(v);
+  showResumo(v);
+});
+$('editVehicle').addEventListener('click', async () => {
+  const v = await localGet('this-device-vehicle');
+  if(v){ $('ownerName').value = v.ownerName; $('vehicleModel').value = v.vehicleModel; $('plate').value = v.plate; }
+  $('resumoCard').classList.add('hidden');
+  $('cadastroCard').classList.remove('hidden');
+});
+
+// ---------- mapa ----------
+function initMap(){
+  if(map) return;
+  map = L.map('map', {zoomControl:true}).setView([-2.4432, -54.7081], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:'&copy; OpenStreetMap'
+  }).addTo(map);
+  polyline = L.polyline([], {color:'#39c98f', weight:4}).addTo(map);
+  navigator.geolocation && navigator.geolocation.getCurrentPosition(pos=>{
+    map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+    marker = L.circleMarker([pos.coords.latitude,pos.coords.longitude],{radius:8,color:'#e0a640',fillColor:'#e0a640',fillOpacity:0.9}).addTo(map);
+  }, ()=>{}, {enableHighAccuracy:true});
+}
+
+// ---------- wake lock (mantém a tela ligada durante a viagem) ----------
+async function requestWakeLock(){
+  try{
+    if('wakeLock' in navigator && document.visibilityState === 'visible'){
+      wakeLock = await navigator.wakeLock.request('screen');
+      console.log('Wake Lock ativado');
+    }
+  }catch(e){ console.warn('Wake Lock não disponível:', e); }
+}
+function releaseWakeLock(){
+  if(wakeLock){ wakeLock.release(); wakeLock = null; console.log('Wake Lock liberado'); }
+}
+document.addEventListener('visibilitychange', async () => {
+  if(document.visibilityState === 'visible' && watchId !== null){ await requestWakeLock(); }
+});
+
+// ---------- ping para manter o Service Worker ativo ----------
+function startPing(){
+  if(pingInterval) return;
+  pingInterval = setInterval(() => {
+    fetch('/ping').catch(() => {});
+  }, 30000);
+  console.log('Ping iniciado');
+}
+function stopPing(){
+  if(pingInterval){ clearInterval(pingInterval); pingInterval = null; }
+}
+
+// ---------- rastreamento ----------
+function resetTripState(){
+  currentTripPoints = []; totalKm = 0; movingSec = 0; stoppedSec = 0; lastFix = null;
+  polyline.setLatLngs([]);
+  updateStatsUI();
+}
+function updateStatsUI(){
+  $('statKm').textContent = totalKm.toFixed(2).replace('.',',');
+  $('statMov').textContent = fmtClock(movingSec);
+  $('statParado').textContent = fmtClock(stoppedSec);
+}
+
+function onPosition(pos){
+  const {latitude:lat, longitude:lng} = pos.coords;
+  const now = Date.now();
+  $('geoErro').classList.add('hidden');
+
+  if(marker){ marker.setLatLng([lat,lng]); }
+  if(map){ map.panTo([lat,lng]); }
+
+  currentTripPoints.push({lat,lng,t:now});
+  polyline.addLatLng([lat,lng]);
+
+  if(lastFix){
+    const dt = (now - lastFix.time)/1000;
+    const dist = haversine(lastFix.lat, lastFix.lng, lat, lng);
+    if(dt > 0 && dt < 120){
+      if(dist >= MOVE_THRESHOLD_M){ totalKm += dist/1000; movingSec += dt; }
+      else { stoppedSec += dt; }
+    }
+  }
+  lastFix = {lat, lng, time: now};
+  updateStatsUI();
+
+  // Tentar gravar no Firebase, se falhar salva offline
+  try {
+    db.ref('vehicles/' + plateKey + '/live').set({
+      lat, lng, timestamp: now,
+      status: 'em uso',
+      km: Number(totalKm.toFixed(2)),
+      movingSec: Math.round(movingSec),
+      stoppedSec: Math.round(stoppedSec)
+    });
+  } catch (e) {
+    savePointOffline(lat, lng, now, totalKm, movingSec, stoppedSec);
+  }
+}
+function onGeoError(err){
+  $('geoErro').textContent = 'Não foi possível obter a localização: ' + err.message + '. Verifique se a permissão de localização está ativa.';
+  $('geoErro').classList.remove('hidden');
+}
+
+$('startBtn').addEventListener('click', async () => {
+  if(!navigator.geolocation){ alert('Este navegador não suporta geolocalização.'); return; }
+  resetTripState();
+  tripStart = Date.now();
+  watchId = navigator.geolocation.watchPosition(onPosition, onGeoError, {enableHighAccuracy:true, maximumAge:2000, timeout:15000});
+  await requestWakeLock();
+  startPing();
+  $('startBtn').classList.add('hidden');
+  $('stopBtn').classList.remove('hidden');
+  $('statusBadge').classList.add('on');
+  $('statusTxt').textContent = 'Em uso';
+  console.log('Viagem iniciada');
+});
+
+$('stopBtn').addEventListener('click', async () => {
+  if(watchId !== null){ navigator.geolocation.clearWatch(watchId); watchId = null; }
+  releaseWakeLock();
+  stopPing();
+  $('stopBtn').classList.add('hidden');
+  $('startBtn').classList.remove('hidden');
+  $('statusBadge').classList.remove('on');
+  $('statusTxt').textContent = 'Parado';
+
+  try {
+    await db.ref('vehicles/' + plateKey + '/live/status').set('parado');
+  } catch (e) { console.warn('Falha ao atualizar status parado'); }
+
+  if(currentTripPoints.length > 1){
+    const trip = {
+      id: uid(),
+      plateKey: plateKey,
+      start: tripStart,
+      end: Date.now(),
+      km: Number(totalKm.toFixed(2)),
+      movingSec: Math.round(movingSec),
+      stoppedSec: Math.round(stoppedSec),
+      points: currentTripPoints
+    };
+    try {
+      await db.ref('vehicles/' + plateKey + '/trips/' + trip.id).set(trip);
+    } catch (e) {
+      saveTripOffline(trip);
+    }
+  }
+  console.log('Viagem encerrada');
+});
+
+// ---------- histórico em tempo real (ouve mudanças no Firebase) ----------
+function listenHistorico(){
+  db.ref('vehicles/' + plateKey + '/trips').orderByChild('start').on('value', (snap) => {
+    const lista = $('historicoLista');
+    const trips = [];
+    snap.forEach(child => trips.push(child.val()));
+    trips.reverse(); // mais recente primeiro
+    if(trips.length === 0){
+      lista.innerHTML = '<p class="empty">Nenhuma viagem registrada ainda.</p>';
+      return;
+    }
+    lista.innerHTML = '';
+    trips.forEach(trip => {
+      const data = new Date(trip.start);
+      const dataFmt = data.toLocaleDateString('pt-BR') + ' · ' + data.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      const el = document.createElement('div');
+      el.className = 'hist-item';
+      el.innerHTML = `
+        <div class="data">${dataFmt}</div>
+        <div class="metrics">
+          <span>${trip.km.toFixed(2).replace('.',',')} <b>km</b></span>
+          <span>${fmtHM(trip.movingSec)} <b>rodando</b></span>
+          <span>${fmtHM(trip.stoppedSec)} <b>parado</b></span>
+        </div>`;
+      el.addEventListener('click', () => showTripOnMap(trip));
+      lista.appendChild(el);
+    });
+  });
+}
+
+// ---------- localização ao vivo vinda de outro dispositivo (ex: quem está rastreando o veículo) ----------
+function listenLiveFromOtherDevices(){
+  db.ref('vehicles/' + plateKey + '/live').on('value', (snap) => {
+    const live = snap.val();
+    if(!live || watchId !== null) return; // se este dispositivo já está rastreando, não sobrescreve
+    if(marker && map){
+      marker.setLatLng([live.lat, live.lng]);
+      map.panTo([live.lat, live.lng]);
+    }
+    $('statusBadge').classList.toggle('on', live.status === 'em uso');
+    $('statusTxt').textContent = live.status === 'em uso' ? 'Em uso (outro aparelho)' : 'Parado';
+  });
+}
+
+function showTripOnMap(trip){
+  if(!trip.points || trip.points.length === 0) return;
+  const latlngs = trip.points.map(p => [p.lat, p.lng]);
+  polyline.setLatLngs(latlngs);
+  map.fitBounds(polyline.getBounds(), {padding:[24,24]});
+  if(marker){ marker.setLatLng(latlngs[latlngs.length-1]); }
+  $('verAtualLink').classList.remove('hidden');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+$('verAtualLink').addEventListener('click', () => {
+  polyline.setLatLngs(currentTripPoints.map(p=>[p.lat,p.lng]));
+  $('verAtualLink').classList.add('hidden');
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{
+      map.setView([pos.coords.latitude,pos.coords.longitude],15);
+    });
+  }
+});
+
+// ---------- service worker (instalação como app) ----------
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW falhou:', e));
+  });
+}
+
+// ---------- init ----------
+loadVehicle();
+openDB();
+</script>
+</body>
+</html>

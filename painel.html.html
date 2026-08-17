@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b1310">
+<title>Painel do Gestor — Rastreador</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --bg:#0b1310; --bg2:#111c17; --card:#132019;
+    --linha:rgba(214,232,220,0.10);
+    --texto:#dfeee6; --texto-fraco:rgba(223,238,230,0.55);
+    --verde:#39c98f; --ambar:#e0a640; --vermelho:#e0664a;
+    --mono:'IBM Plex Mono', monospace;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--texto); font-family:'Inter',sans-serif; padding-bottom:40px;}
+  h1,h2{font-family:'Fraunces',serif; margin:0;}
+  header{
+    padding:18px 20px; display:flex; align-items:center; justify-content:space-between;
+    border-bottom:1px solid var(--linha); position:sticky; top:0; background:rgba(11,19,16,0.92);
+    backdrop-filter:blur(6px); z-index:20;
+  }
+  header h1{font-size:1.15rem;}
+  .wrap{max-width:720px; margin:0 auto; padding:20px;}
+  .card{background:var(--card); border:1px solid var(--linha); border-radius:10px; padding:22px; margin-bottom:18px;}
+  label{display:block; font-family:var(--mono); font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--texto-fraco); margin-bottom:6px;}
+  input{width:100%; padding:12px 14px; border-radius:6px; border:1px solid var(--linha); background:var(--bg2); color:var(--texto); font-size:0.95rem; margin-bottom:14px;}
+  input:focus{outline:none; border-color:var(--verde);}
+  button{font-family:'Inter',sans-serif; font-weight:600; font-size:0.92rem; padding:13px 18px; border-radius:6px; border:none; cursor:pointer;}
+  .btn-primary{background:var(--verde); color:#06140d;}
+  .btn-ghost{background:transparent; border:1px solid var(--linha); color:var(--texto);}
+  .btn-block{width:100%;}
+  .btn-sm{padding:8px 12px; font-size:0.8rem;}
+  .linkbtn{background:none; border:none; color:var(--verde); font-family:var(--mono); font-size:0.8rem; cursor:pointer; padding:0;}
+  .erro{color:var(--vermelho); font-size:0.85rem; margin-top:-6px; margin-bottom:12px;}
+  .hidden{display:none;}
+  #map{height:320px; border-radius:10px; overflow:hidden; border:1px solid var(--linha); margin-bottom:14px;}
+
+  .veic-item{border:1px solid var(--linha); border-radius:8px; padding:16px 18px; margin-bottom:12px; cursor:pointer;}
+  .veic-item:hover{border-color:rgba(57,201,143,0.4);}
+  .veic-top{display:flex; justify-content:space-between; align-items:center;}
+  .veic-top strong{font-family:'Fraunces',serif; font-size:1.05rem;}
+  .plate{font-family:var(--mono); background:var(--ambar); color:#221a07; padding:4px 10px; border-radius:5px; font-weight:600; font-size:0.8rem;}
+  .status-pill{font-family:var(--mono); font-size:0.7rem; padding:4px 10px; border-radius:20px; border:1px solid var(--linha); color:var(--texto-fraco);}
+  .status-pill.on{color:var(--verde); border-color:rgba(57,201,143,0.4);}
+  .veic-meta{margin-top:10px; font-size:0.82rem; color:var(--texto-fraco); font-family:var(--mono);}
+
+  .codigo-box{
+    background:var(--bg2); border:1px dashed var(--ambar); border-radius:8px; padding:16px;
+    text-align:center; margin-top:10px;
+  }
+  .codigo-box .cod{font-family:var(--mono); font-size:1.8rem; letter-spacing:0.15em; color:var(--ambar); font-weight:600;}
+  .empty{color:var(--texto-fraco); font-size:0.88rem; text-align:center; padding:20px 0;}
+  .stats{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px;}
+  .stat{background:var(--bg2); border:1px solid var(--linha); border-radius:8px; padding:14px 12px; text-align:center;}
+  .stat .val{font-family:var(--mono); font-size:1.2rem; color:var(--verde);}
+  .stat .lbl{font-size:0.65rem; color:var(--texto-fraco); text-transform:uppercase; margin-top:4px;}
+  .hist-item{display:flex; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--linha); font-family:var(--mono); font-size:0.8rem;}
+  .hist-item:last-child{border-bottom:none;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Painel do gestor</h1>
+  <button class="btn-ghost btn-sm hidden" id="logoutBtn">Sair</button>
+</header>
+
+<div class="wrap">
+
+  <!-- LOGIN -->
+  <div class="card" id="loginCard">
+    <label for="email">E-mail</label>
+    <input id="email" type="email" placeholder="voce@exemplo.com">
+    <label for="senha">Senha</label>
+    <input id="senha" type="password" placeholder="••••••••">
+    <p class="erro hidden" id="loginErro"></p>
+    <button class="btn-primary btn-block" id="loginBtn">Entrar</button>
+    <p style="text-align:center; margin-top:14px; font-size:0.85rem; color:var(--texto-fraco);">
+      Primeiro acesso? <button class="linkbtn" id="cadastrarBtn">Criar conta</button>
+    </p>
+  </div>
+
+  <!-- LISTA DE VEÍCULOS -->
+  <div id="painelGestor" class="hidden">
+
+    <div class="card">
+      <h2 style="font-size:1.05rem; margin-bottom:16px;">Cadastrar novo veículo</h2>
+      <label for="ownerName">Nome do motorista/dono</label>
+      <input id="ownerName" placeholder="Ex: João da Silva">
+      <label for="vehicleModel">Veículo</label>
+      <input id="vehicleModel" placeholder="Ex: Honda CG 160">
+      <label for="plateNew">Placa</label>
+      <input id="plateNew" placeholder="Ex: ABC1D23" style="text-transform:uppercase">
+      <button class="btn-primary btn-block" id="cadastrarVeiculoBtn">Cadastrar e gerar código</button>
+      <div class="codigo-box hidden" id="codigoBox">
+        <div style="font-size:0.75rem; color:var(--texto-fraco); font-family:var(--mono);">CÓDIGO DE PAREAMENTO</div>
+        <div class="cod" id="codigoGerado"></div>
+        <div style="font-size:0.75rem; color:var(--texto-fraco); margin-top:6px;">Envie este código + a placa ao motorista para ele parear o app dele.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:1.05rem; margin-bottom:16px;">Seus veículos</h2>
+      <div id="listaVeiculos"><p class="empty">Nenhum veículo cadastrado ainda.</p></div>
+    </div>
+
+    <!-- DETALHE DO VEÍCULO -->
+    <div class="card hidden" id="detalheCard">
+      <div class="veic-top">
+        <strong id="detNome"></strong>
+        <span class="plate" id="detPlaca"></span>
+      </div>
+      <div id="map" style="margin-top:14px;"></div>
+      <div class="stats">
+        <div class="stat"><div class="val" id="detKm">—</div><div class="lbl">Km (viagem atual)</div></div>
+        <div class="stat"><div class="val" id="detMov">—</div><div class="lbl">Em movimento</div></div>
+        <div class="stat"><div class="val" id="detParado">—</div><div class="lbl">Parado</div></div>
+      </div>
+      <h2 style="font-size:0.95rem; margin-bottom:8px;">Histórico de viagens</h2>
+      <div id="detHistorico"><p class="empty">Nenhuma viagem registrada ainda.</p></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBu1-wmA3ghtSrSy0g7c1REuXSyeYdVZl8",
+  authDomain: "rastreador-veicular-7d1af.firebaseapp.com",
+  databaseURL: "https://rastreador-veicular-7d1af-default-rtdb.firebaseio.com",
+  projectId: "rastreador-veicular-7d1af",
+  storageBucket: "rastreador-veicular-7d1af.firebasestorage.app",
+  messagingSenderId: "950183524518",
+  appId: "1:950183524518:web:831adeca4969a246fcdc67"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.database();
+
+let myUid = null, map, marker, polyline, detPlateKey = null;
+let pingInterval = null;
+
+function sanitizeKey(str){ return str.replace(/[.#$\[\]\/\s]/g,'_').toUpperCase(); }
+function fmtHM(s){ const h=Math.floor(s/3600), m=Math.floor((s%3600)/60); return (h>0?h+"h ":"")+String(m).padStart(2,'0')+"min"; }
+
+// ---------- ping para manter o Service Worker ativo ----------
+function startPing(){
+  if(pingInterval) return;
+  pingInterval = setInterval(() => { fetch('/ping').catch(() => {}); }, 30000);
+}
+function stopPing(){ if(pingInterval){ clearInterval(pingInterval); pingInterval = null; } }
+
+auth.onAuthStateChanged((user) => {
+  if(user){
+    myUid = user.uid;
+    $('loginCard').classList.add('hidden');
+    $('painelGestor').classList.remove('hidden');
+    $('logoutBtn').classList.remove('hidden');
+    carregarVeiculos();
+    startPing();
+  } else {
+    $('loginCard').classList.remove('hidden');
+    $('painelGestor').classList.add('hidden');
+    $('logoutBtn').classList.add('hidden');
+    stopPing();
+  }
+});
+
+$('loginBtn').addEventListener('click', async () => {
+  $('loginErro').classList.add('hidden');
+  try{
+    await auth.signInWithEmailAndPassword($('email').value.trim(), $('senha').value);
+  }catch(e){
+    $('loginErro').textContent = 'E-mail ou senha inválidos.';
+    $('loginErro').classList.remove('hidden');
+  }
+});
+$('cadastrarBtn').addEventListener('click', async () => {
+  $('loginErro').classList.add('hidden');
+  try{
+    await auth.createUserWithEmailAndPassword($('email').value.trim(), $('senha').value);
+  }catch(e){
+    $('loginErro').textContent = 'Não foi possível criar a conta: ' + e.message;
+    $('loginErro').classList.remove('hidden');
+  }
+});
+$('logoutBtn').addEventListener('click', () => auth.signOut());
+
+$('cadastrarVeiculoBtn').addEventListener('click', async () => {
+  const ownerName = $('ownerName').value.trim();
+  const vehicleModel = $('vehicleModel').value.trim();
+  const plate = $('plateNew').value.trim().toUpperCase();
+  if(!ownerName || !vehicleModel || !plate){ alert('Preencha todos os campos.'); return; }
+  const plateKey = sanitizeKey(plate);
+  const code = String(Math.floor(100000 + Math.random()*900000));
+  await db.ref('vehicles/'+plateKey+'/ownerUid').set(myUid);
+  await db.ref('vehicles/'+plateKey+'/info').set({ownerName, vehicleModel, plate});
+  await db.ref('vehicles/'+plateKey+'/accessCode').set(code);
+  await db.ref('users/'+myUid+'/vehicles/'+plateKey).set(true);
+  $('codigoGerado').textContent = code.slice(0,3) + ' ' + code.slice(3);
+  $('codigoBox').classList.remove('hidden');
+  $('ownerName').value=''; $('vehicleModel').value=''; $('plateNew').value='';
+  carregarVeiculos();
+});
+
+async function carregarVeiculos(){
+  const snap = await db.ref('users/'+myUid+'/vehicles').once('value');
+  const plates = snap.val() ? Object.keys(snap.val()) : [];
+  const lista = $('listaVeiculos');
+  if(plates.length===0){ lista.innerHTML='<p class="empty">Nenhum veículo cadastrado ainda.</p>'; return; }
+  lista.innerHTML='';
+  for(const plateKey of plates){
+    const infoSnap = await db.ref('vehicles/'+plateKey+'/info').once('value');
+    const info = infoSnap.val();
+    if(!info) continue;
+    const liveSnap = await db.ref('vehicles/'+plateKey+'/live').once('value');
+    const live = liveSnap.val();
+    const emUso = live && live.status === 'em uso';
+    const el = document.createElement('div');
+    el.className = 'veic-item';
+    el.innerHTML = `
+      <div class="veic-top">
+        <strong>${info.ownerName}</strong>
+        <span class="plate">${info.plate}</span>
+      </div>
+      <div class="veic-meta">${info.vehicleModel}</div>
+      <div style="margin-top:8px;"><span class="status-pill ${emUso?'on':''}">${emUso?'Em uso agora':'Parado'}</span></div>
+    `;
+    el.addEventListener('click', () => abrirDetalhe(plateKey, info));
+    lista.appendChild(el);
+    // ouvir mudanças de status ao vivo nesta linha
+    db.ref('vehicles/'+plateKey+'/live/status').on('value', (s) => {
+      const pill = el.querySelector('.status-pill');
+      const on = s.val() === 'em uso';
+      pill.classList.toggle('on', on);
+      pill.textContent = on ? 'Em uso agora' : 'Parado';
+    });
+  }
+}
+
+function abrirDetalhe(plateKey, info){
+  detPlateKey = plateKey;
+  $('detalheCard').classList.remove('hidden');
+  $('detNome').textContent = info.ownerName + ' — ' + info.vehicleModel;
+  $('detPlaca').textContent = info.plate;
+  $('detalheCard').scrollIntoView({behavior:'smooth'});
+
+  if(!map){
+    map = L.map('map').setView([-2.4432,-54.7081], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'&copy; OpenStreetMap'}).addTo(map);
+    polyline = L.polyline([], {color:'#39c98f', weight:4}).addTo(map);
+  }
+
+  db.ref('vehicles/'+plateKey+'/live').off();
+  db.ref('vehicles/'+plateKey+'/live').on('value', (snap) => {
+    const live = snap.val();
+    if(!live) return;
+    if(!marker){ marker = L.circleMarker([live.lat,live.lng],{radius:8,color:'#e0a640',fillColor:'#e0a640',fillOpacity:0.9}).addTo(map); }
+    else { marker.setLatLng([live.lat,live.lng]); }
+    map.panTo([live.lat,live.lng]);
+    $('detKm').textContent = (live.km ?? 0).toFixed(2).replace('.',',');
+    $('detMov').textContent = fmtHM(live.movingSec ?? 0);
+    $('detParado').textContent = fmtHM(live.stoppedSec ?? 0);
+  });
+
+  db.ref('vehicles/'+plateKey+'/trips').off();
+  db.ref('vehicles/'+plateKey+'/trips').orderByChild('start').on('value', (snap) => {
+    const trips = [];
+    snap.forEach(c => trips.push(c.val()));
+    trips.reverse();
+    const box = $('detHistorico');
+    if(trips.length===0){ box.innerHTML = '<p class="empty">Nenhuma viagem registrada ainda.</p>'; return; }
+    box.innerHTML='';
+    trips.forEach(trip => {
+      const data = new Date(trip.start);
+      const dataFmt = data.toLocaleDateString('pt-BR')+' · '+data.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      const el = document.createElement('div');
+      el.className='hist-item';
+      el.innerHTML = `<span>${dataFmt}</span><span>${trip.km.toFixed(2).replace('.',',')} km · ${fmtHM(trip.movingSec)} rodando · ${fmtHM(trip.stoppedSec)} parado</span>`;
+      el.style.cursor='pointer';
+      el.addEventListener('click', () => {
+        if(!trip.points) return;
+        const latlngs = trip.points.map(p=>[p.lat,p.lng]);
+        polyline.setLatLngs(latlngs);
+        map.fitBounds(polyline.getBounds(),{padding:[24,24]});
+      });
+      box.appendChild(el);
+    });
+  });
+}
+</script>
+</body>
+</html>

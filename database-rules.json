@@ -1,0 +1,45 @@
+{
+  "rules": {
+    "vehicles": {
+      "$plateKey": {
+        ".read": "auth != null && (root.child('vehicles/'+$plateKey+'/ownerUid').val() === auth.uid || root.child('vehicles/'+$plateKey+'/authorizedDrivers/'+auth.uid).val() === root.child('vehicles/'+$plateKey+'/accessCode').val())",
+
+        "ownerUid": {
+          ".write": "auth != null && !data.exists()"
+        },
+
+        "info": {
+          ".write": "auth != null && root.child('vehicles/'+$plateKey+'/ownerUid').val() === auth.uid"
+        },
+
+        "accessCode": {
+          ".write": "auth != null && root.child('vehicles/'+$plateKey+'/ownerUid').val() === auth.uid"
+        },
+
+        "authorizedDrivers": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "newData.val() === root.child('vehicles/'+$plateKey+'/accessCode').val()"
+          }
+        },
+
+        "live": {
+          ".write": "auth != null && (root.child('vehicles/'+$plateKey+'/ownerUid').val() === auth.uid || root.child('vehicles/'+$plateKey+'/authorizedDrivers/'+auth.uid).val() === root.child('vehicles/'+$plateKey+'/accessCode').val())"
+        },
+
+        "trips": {
+          "$tripId": {
+            ".write": "auth != null && (root.child('vehicles/'+$plateKey+'/ownerUid').val() === auth.uid || root.child('vehicles/'+$plateKey+'/authorizedDrivers/'+auth.uid).val() === root.child('vehicles/'+$plateKey+'/accessCode').val())"
+          }
+        }
+      }
+    },
+
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    }
+  }
+}
